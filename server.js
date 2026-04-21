@@ -7,6 +7,9 @@ import { z } from 'zod';
 const API_KEY = process.env.RESTOPLACE_KEY;
 const BASE_URL = 'https://api.restoplace.cc';
 
+// booking_number → booking_id mapping (survives within one server process)
+const bookingMap = new Map();
+
 if (!API_KEY) {
   console.error('RESTOPLACE_KEY не задан в переменных окружения');
   process.exit(1);
@@ -121,6 +124,10 @@ function createServer() {
         payment_link: data.responseData?.paymentLink || null,
       };
 
+      if (result.booking_number && result.booking_id) {
+        bookingMap.set(String(result.booking_number), String(result.booking_id));
+      }
+
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
@@ -138,7 +145,8 @@ function createServer() {
       },
     },
     async ({ booking_id }) => {
-      const data = await restoplace('PUT', `/reserves/${booking_id}/status`, {
+      const resolvedId = bookingMap.get(String(booking_id)) ?? booking_id;
+      const data = await restoplace('PUT', `/reserves/${resolvedId}/status`, {
         status: 5,
         cancel_reason: 3,
       });
