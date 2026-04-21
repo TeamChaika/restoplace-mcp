@@ -181,9 +181,11 @@ function createServer() {
           type: 'text',
           text: JSON.stringify({
             today: `${yyyy}-${mm}-${dd}`,
+            year: yyyy,
             day_of_week: days[moscow.getDay()],
             readable: `${moscow.getDate()} ${months[moscow.getMonth()]} ${yyyy}`,
             timezone: 'Europe/Moscow',
+            ВАЖНО: `Текущий год — ${yyyy}. Используй СТРОГО эту дату. Год ${yyyy}, не 2024, не 2025.`,
           }, null, 2),
         }],
       };
