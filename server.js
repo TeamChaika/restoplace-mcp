@@ -14,6 +14,7 @@ if (!API_KEY) {
 
 // ─── Хелпер для запросов к Restoplace ───────────────────────────────────
 async function restoplace(method, path, body = null) {
+  console.log(`[Restoplace] ${method} ${path}`, body || '');
   const options = {
     method,
     headers: {
@@ -23,9 +24,10 @@ async function restoplace(method, path, body = null) {
   };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
-  return res.json();
+  const data = await res.json();
+  console.log(`[Restoplace] Response:`, JSON.stringify(data).slice(0, 500));
+  return data;
 }
-
 // ─── Создаём MCP-сервер ─────────────────────────────────────────────────
 function createServer() {
   const server = new McpServer({
