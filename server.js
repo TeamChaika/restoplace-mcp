@@ -24,6 +24,7 @@ async function restoplace(method, path, body = null) {
   };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   const data = await res.json();
   console.log(`[Restoplace] Response:`, JSON.stringify(data).slice(0, 500));
   return data;
@@ -155,42 +156,42 @@ function createServer() {
     }
   );
 
+  // Инструмент 4: текущая дата
+  server.registerTool(
+    'get_current_date',
+    {
+      title: 'Получить текущую дату',
+      description:
+        'Получить актуальную сегодняшнюю дату в часовом поясе ресторана. Вызывай ВСЕГДА, когда гость говорит относительные даты: "сегодня", "завтра", "в пятницу", "на выходных", "через неделю".',
+      inputSchema: {},
+    },
+    async () => {
+      const now = new Date();
+      const moscow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+
+      const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+      const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+      const yyyy = moscow.getFullYear();
+      const mm = String(moscow.getMonth() + 1).padStart(2, '0');
+      const dd = String(moscow.getDate()).padStart(2, '0');
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            today: `${yyyy}-${mm}-${dd}`,
+            day_of_week: days[moscow.getDay()],
+            readable: `${moscow.getDate()} ${months[moscow.getMonth()]} ${yyyy}`,
+            timezone: 'Europe/Moscow',
+          }, null, 2),
+        }],
+      };
+    }
+  );
+
   return server;
 }
-
-
-server.registerTool(
-  'get_current_date',
-  {
-    title: 'Получить текущую дату',
-    description:
-      'Получить актуальную сегодняшнюю дату в часовом поясе ресторана. Вызывай ВСЕГДА, когда гость говорит относительные даты: "сегодня", "завтра", "в пятницу", "на выходных", "через неделю".',
-    inputSchema: {},
-  },
-  async () => {
-    const now = new Date();
-    const moscow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-    
-    const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
-    const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-    
-    const yyyy = moscow.getFullYear();
-    const mm = String(moscow.getMonth() + 1).padStart(2, '0');
-    const dd = String(moscow.getDate()).padStart(2, '0');
-    
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          today: `${yyyy}-${mm}-${dd}`,
-          day_of_week: days[moscow.getDay()],
-          readable: `${moscow.getDate()} ${months[moscow.getMonth()]} ${yyyy}`,
-          timezone: 'Europe/Moscow',
-        }, null, 2)
-      }]
-    };
-  }
-);
 // ─── Настройка Express с Streamable HTTP транспортом ────────────────────
 const app = express();
 app.use(express.json());
