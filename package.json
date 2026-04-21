@@ -1,0 +1,17 @@
+{
+  "name": "restoplace-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP-сервер для интеграции Timeweb AI-агента с Restoplace",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

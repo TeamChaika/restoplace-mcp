@@ -1,0 +1,9 @@
+services:
+  mcp-server:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - RESTOPLACE_KEY=${RESTOPLACE_KEY}
+      - PORT=3000
+    restart: unless-stopped
