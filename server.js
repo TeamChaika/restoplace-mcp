@@ -172,20 +172,37 @@ function createServer() {
       const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
       const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
-      const yyyy = moscow.getFullYear();
-      const mm = String(moscow.getMonth() + 1).padStart(2, '0');
-      const dd = String(moscow.getDate()).padStart(2, '0');
+      const fmt = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return { date: `${y}-${m}-${day}`, readable: `${d.getDate()} ${months[d.getMonth()]} ${y}`, day_of_week: days[d.getDay()] };
+      };
+
+      const t1 = new Date(moscow); t1.setDate(moscow.getDate() + 1);
+      const t2 = new Date(moscow); t2.setDate(moscow.getDate() + 2);
+      const t3 = new Date(moscow); t3.setDate(moscow.getDate() + 3);
+      const t7 = new Date(moscow); t7.setDate(moscow.getDate() + 7);
+
+      const todayFmt = fmt(moscow);
 
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
-            today: `${yyyy}-${mm}-${dd}`,
-            year: yyyy,
-            day_of_week: days[moscow.getDay()],
-            readable: `${moscow.getDate()} ${months[moscow.getMonth()]} ${yyyy}`,
+            today: todayFmt.date,
+            year: moscow.getFullYear(),
+            day_of_week: todayFmt.day_of_week,
+            readable: todayFmt.readable,
             timezone: 'Europe/Moscow',
-            ВАЖНО: `Текущий год — ${yyyy}. Используй СТРОГО эту дату. Год ${yyyy}, не 2024, не 2025.`,
+            ВАЖНО: `Текущий год — ${moscow.getFullYear()}. Используй СТРОГО эти даты, не считай самостоятельно.`,
+            готовые_даты: {
+              сегодня: fmt(moscow),
+              завтра: fmt(t1),
+              послезавтра: fmt(t2),
+              через_3_дня: fmt(t3),
+              через_неделю: fmt(t7),
+            },
           }, null, 2),
         }],
       };
