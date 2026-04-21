@@ -1,7 +1,8 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'node:crypto';
 import express from 'express';
-
-const app = express();
-app.use(express.json());
+import { z } from 'zod';
 
 const API_KEY = process.env.RESTOPLACE_KEY;
 const BASE_URL = 'https://api.restoplace.cc';
@@ -11,7 +12,7 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// Хелпер для запросов к Restoplace
+// ─── Хелпер для запросов к Restoplace ───────────────────────────────────
 async function restoplace(method, path, body = null) {
   const options = {
     method,
@@ -25,95 +26,33 @@ async function restoplace(method, path, body = null) {
   return res.json();
 }
 
-// ─── MCP: список инструментов ───────────────────────────────────────────────
-app.get('/tools', (req, res) => {
-  res.json({
-    tools: [
-      {
-        name: 'check_slots',
-        description:
-          'Проверить свободные временные слоты для бронирования столика на указанную дату и количество гостей. Вызывай перед созданием брони.',
-        parameters: {
-          type: 'object',
-          properties: {
-            date: {
-              type: 'string',
-              description: 'Дата в формате YYYY-MM-DD, например 2024-12-25',
-            },
-            guests: {
-              type: 'integer',
-              description: 'Количество гостей (от 1 до 20)',
-            },
-          },
-          required: ['date', 'guests'],
-        },
-      },
-      {
-        name: 'create_booking',
-        description:
-          'Создать бронь столика. Вызывай ТОЛЬКО после того, как гость явно подтвердил все данные.',
-        parameters: {
-          type: 'object',
-          properties: {
-            from: {
-              type: 'string',
-              description: 'Начало брони, формат: 2024-12-25 19:00:00',
-            },
-            to: {
-              type: 'string',
-              description: 'Конец брони, формат: 2024-12-25 21:00:00',
-            },
-            name: {
-              type: 'string',
-              description: 'Имя гостя',
-            },
-            phone: {
-              type: 'string',
-              description: 'Телефон гостя, например 79991234567',
-            },
-            count: {
-              type: 'integer',
-              description: 'Количество гостей',
-            },
-            comment: {
-              type: 'string',
-              description: 'Комментарий к брони (день рождения, аллергии и т.д.)',
-            },
-          },
-          required: ['from', 'to', 'name', 'count'],
-        },
-      },
-      {
-        name: 'cancel_booking',
-        description: 'Отменить существующую бронь по её ID.',
-        parameters: {
-          type: 'object',
-          properties: {
-            booking_id: {
-              type: 'string',
-              description: 'ID брони, которую нужно отменить',
-            },
-          },
-          required: ['booking_id'],
-        },
-      },
-    ],
+// ─── Создаём MCP-сервер ─────────────────────────────────────────────────
+function createServer() {
+  const server = new McpServer({
+    name: 'restoplace-booking',
+    version: '1.0.0',
   });
-});
 
-// ─── MCP: вызов инструмента ─────────────────────────────────────────────────
-app.post('/call', async (req, res) => {
-  const { tool, parameters } = req.body;
-
-  try {
-    // check_slots — свободные слоты
-    if (tool === 'check_slots') {
-      const { date, guests } = parameters;
-
+  // Инструмент 1: проверка свободных слотов
+  server.registerTool(
+    'check_slots',
+    {
+      title: 'Проверить свободные слоты',
+      description:
+        'Проверить свободные временные слоты для бронирования столика на указанную дату и количество гостей. Вызывай перед созданием брони.',
+      inputSchema: {
+        date: z.string().describe('Дата в формате YYYY-MM-DD, например 2024-12-25'),
+        guests: z.number().int().describe('Количество гостей (от 1 до 20)'),
+      },
+    },
+    async ({ date, guests }) => {
       const data = await restoplace('GET', `/times?date=${date}&length=120`);
 
       if (data.error) {
-        return res.json({ result: { error: data.error } });
+        return {
+          content: [{ type: 'text', text: `Ошибка: ${data.error}` }],
+          isError: true,
+        };
       }
 
       const freeSlots = (data.responseData || [])
@@ -124,83 +63,171 @@ app.post('/call', async (req, res) => {
         .slice(0, 8)
         .map((slot) => ({ from: slot.from, to: slot.to }));
 
-      return res.json({
-        result: {
-          date,
-          guests,
-          available_slots: freeSlots,
-          total_found: freeSlots.length,
-        },
-      });
-    }
-
-    // create_booking — создать бронь
-    if (tool === 'create_booking') {
-      const { from, to, name, phone, count, comment } = parameters;
-
-      const body = {
-        from,
-        to,
-        name,
-        count,
-        source: 'chatbot',
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              date,
+              guests,
+              available_slots: freeSlots,
+              total_found: freeSlots.length,
+            }, null, 2),
+          },
+        ],
       };
+    }
+  );
+
+  // Инструмент 2: создание брони
+  server.registerTool(
+    'create_booking',
+    {
+      title: 'Создать бронь',
+      description:
+        'Создать бронь столика. Вызывай ТОЛЬКО после явного подтверждения гостем всех данных.',
+      inputSchema: {
+        from: z.string().describe('Начало брони: 2024-12-25 19:00:00'),
+        to: z.string().describe('Конец брони: 2024-12-25 21:00:00'),
+        name: z.string().describe('Имя гостя'),
+        phone: z.string().optional().describe('Телефон гостя, например 79991234567'),
+        count: z.number().int().describe('Количество гостей'),
+        comment: z.string().optional().describe('Комментарий к брони'),
+      },
+    },
+    async ({ from, to, name, phone, count, comment }) => {
+      const body = { from, to, name, count, source: 'chatbot' };
       if (phone) body.phone = phone;
       if (comment) body.text = comment;
 
       const data = await restoplace('POST', '/reserves', body);
 
       if (data.error) {
-        return res.json({ result: { success: false, error: data.error } });
+        return {
+          content: [{ type: 'text', text: `Ошибка: ${data.error}` }],
+          isError: true,
+        };
       }
 
-      return res.json({
-        result: {
-          success: true,
-          booking_id: data.responseData?.id,
-          booking_number: data.responseData?.number,
-          message: data.responseData?.message,
-          payment_needed: data.responseData?.paymentNeed || false,
-          payment_link: data.responseData?.paymentLink || null,
-        },
-      });
+      const result = {
+        success: true,
+        booking_id: data.responseData?.id,
+        booking_number: data.responseData?.number,
+        message: data.responseData?.message,
+        payment_needed: data.responseData?.paymentNeed || false,
+        payment_link: data.responseData?.paymentLink || null,
+      };
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
     }
+  );
 
-    // cancel_booking — отменить бронь
-    if (tool === 'cancel_booking') {
-      const { booking_id } = parameters;
-
+  // Инструмент 3: отмена брони
+  server.registerTool(
+    'cancel_booking',
+    {
+      title: 'Отменить бронь',
+      description: 'Отменить существующую бронь по её ID.',
+      inputSchema: {
+        booking_id: z.string().describe('ID брони для отмены'),
+      },
+    },
+    async ({ booking_id }) => {
       const data = await restoplace('PUT', `/reserves/${booking_id}/status`, {
         status: 5,
         cancel_reason: 3,
       });
 
       if (data.error) {
-        return res.json({ result: { success: false, error: data.error } });
+        return {
+          content: [{ type: 'text', text: `Ошибка: ${data.error}` }],
+          isError: true,
+        };
       }
 
-      return res.json({
-        result: {
-          success: true,
-          message: 'Бронь успешно отменена',
+      return {
+        content: [{ type: 'text', text: 'Бронь успешно отменена' }],
+      };
+    }
+  );
+
+  return server;
+}
+
+// ─── Настройка Express с Streamable HTTP транспортом ────────────────────
+const app = express();
+app.use(express.json());
+
+// Хранилище транспортов по sessionId
+const transports = {};
+
+// Основной MCP endpoint — принимает POST, GET, DELETE на одном URL
+app.all('/mcp', async (req, res) => {
+  try {
+    const sessionId = req.headers['mcp-session-id'];
+    let transport;
+
+    if (sessionId && transports[sessionId]) {
+      // Существующая сессия
+      transport = transports[sessionId];
+    } else if (req.method === 'POST' && !sessionId) {
+      // Новая сессия — создаём транспорт
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => {
+          transports[id] = transport;
         },
       });
+
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          delete transports[transport.sessionId];
+        }
+      };
+
+      const server = createServer();
+      await server.connect(transport);
+    } else {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Invalid session' },
+        id: null,
+      });
+      return;
     }
 
-    return res.status(404).json({ error: `Инструмент "${tool}" не найден` });
-
+    await transport.handleRequest(req, res, req.body);
   } catch (err) {
-    console.error('Ошибка при вызове инструмента:', err);
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    console.error('Ошибка обработки запроса:', err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: 'Internal error' },
+        id: null,
+      });
+    }
   }
 });
 
-// Healthcheck
+// Healthcheck для диагностики
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Главная страница
+app.get('/', (req, res) => {
+  res.json({
+    name: 'restoplace-mcp',
+    version: '1.0.0',
+    endpoint: '/mcp',
+    transport: 'streamable-http',
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`MCP сервер запущен на порту ${PORT}`);
+  console.log(`Endpoint: http://localhost:${PORT}/mcp`);
 });
