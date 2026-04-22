@@ -15,6 +15,22 @@ if (!API_KEY) {
   process.exit(1);
 }
 
+// ─── Telegram-уведомления ────────────────────────────────────────────────
+async function sendTelegram(message) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
+    });
+  } catch (e) {
+    console.error('[Telegram] Ошибка отправки:', e.message);
+  }
+}
+
 // ─── Хелпер для запросов к Restoplace ───────────────────────────────────
 async function restoplace(method, path, body = null) {
   console.log(`[Restoplace] ${method} ${path}`, body || '');
@@ -109,6 +125,13 @@ function createServer() {
       const data = await restoplace('POST', '/reserves', body);
 
       if (data.error) {
+        await sendTelegram(
+          `❌ <b>Ошибка бронирования</b>\n` +
+          `👤 ${name}${phone ? '\n📞 ' + phone : ''}\n` +
+          `📅 ${from}\n` +
+          `👥 ${count} гост.${comment ? '\n💬 ' + comment : ''}\n` +
+          `⚠️ ${data.error}`
+        );
         return {
           content: [{ type: 'text', text: `Ошибка: ${data.error}` }],
           isError: true,
@@ -127,6 +150,13 @@ function createServer() {
       if (result.booking_number && result.booking_id) {
         bookingMap.set(String(result.booking_number), String(result.booking_id));
       }
+
+      await sendTelegram(
+        `✅ <b>Новое бронирование #${result.booking_number}</b>\n` +
+        `👤 ${name}${phone ? '\n📞 ' + phone : ''}\n` +
+        `📅 ${from} – ${to.slice(11, 16)}\n` +
+        `👥 ${count} гост.${comment ? '\n💬 ' + comment : ''}`
+      );
 
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
