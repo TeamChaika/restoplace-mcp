@@ -19,15 +19,24 @@ if (!API_KEY) {
 async function sendTelegram(message) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
+  if (!token || !chatId) {
+    console.warn('[Telegram] TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не заданы');
+    return;
+  }
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('[Telegram] Ошибка API:', JSON.stringify(data));
+    } else {
+      console.log('[Telegram] Сообщение отправлено');
+    }
   } catch (e) {
-    console.error('[Telegram] Ошибка отправки:', e.message);
+    console.error('[Telegram] Ошибка сети:', e.message);
   }
 }
 
